@@ -19,6 +19,8 @@ const REACT_SPECIFIERS = [
   'react',
 ] as const
 
+const COMMONJS_SPECIFIERS = ['@formulajs/formulajs'] as const
+
 /**
  * The viewer ships inside this package, so its React must resolve from here —
  * the user's workspace has no reason to depend on React to author a spreadsheet.
@@ -29,6 +31,21 @@ const REACT_SPECIFIERS = [
 function reactAliases(): { find: RegExp; replacement: string }[] {
   const out: { find: RegExp; replacement: string }[] = []
   for (const specifier of REACT_SPECIFIERS) {
+    try {
+      out.push({
+        find: new RegExp(`^${specifier.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}$`),
+        replacement: require.resolve(specifier),
+      })
+    } catch {
+      // leave it to the workspace; a clear resolve error beats a wrong alias
+    }
+  }
+  return out
+}
+
+function commonJsAliases(): { find: RegExp; replacement: string }[] {
+  const out: { find: RegExp; replacement: string }[] = []
+  for (const specifier of COMMONJS_SPECIFIERS) {
     try {
       out.push({
         find: new RegExp(`^${specifier.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}$`),
@@ -96,7 +113,7 @@ export function viteConfigFor(
     appType: 'custom',
     plugins: openSheetPlugins(config, mcp === true),
     resolve: {
-      alias: [...coreAliases(), ...reactAliases()],
+      alias: [...coreAliases(), ...reactAliases(), ...commonJsAliases()],
       dedupe: ['react', 'react-dom'],
     },
     optimizeDeps: {
@@ -105,7 +122,7 @@ export function viteConfigFor(
       // discovered — or excluded, as React was — the browser receives raw
       // CommonJS, the named import fails, and the viewer dies before it mounts
       // with nothing on screen but a console error.
-      include: [...REACT_SPECIFIERS, '@formulajs/formulajs'],
+      include: [...REACT_SPECIFIERS, ...COMMONJS_SPECIFIERS],
       // Already ESM, and aliased to a real path — but more importantly it
       // reaches Node-only code (the optional `import('playwright')` behind PDF
       // export) that the dep optimizer cannot analyse and refuses to bundle.

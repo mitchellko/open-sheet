@@ -41,6 +41,8 @@ export function appEntry(): string {
 }
 
 function shell(entry: string): string {
+  const normalized = entry.replace(/\\/g, '/')
+  const src = normalized.startsWith('/') ? `/@fs${normalized}` : `/@fs/${normalized}`
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -50,7 +52,7 @@ function shell(entry: string): string {
 </head>
 <body>
 <div id="root"></div>
-<script type="module" src="/@fs${entry}"></script>
+<script type="module" src="${src}"></script>
 </body>
 </html>
 `
