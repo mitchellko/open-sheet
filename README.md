@@ -19,6 +19,8 @@ If [open-slide](https://github.com/1weiho/open-slide) is Google Slides for agent
 npx @open-sheet/cli init my-sheets
 ```
 
+> Practice exercise note: this change is only for local Git workflow practice.
+
 ## Why
 
 Agents write excellent analysis and terrible spreadsheets, and the reason is specific: **`=SUM(B2:B13)`**.
