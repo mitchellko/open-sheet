@@ -12,6 +12,23 @@ export interface TableAnchor {
   rowCount: number
   totalRow?: number
   columns: Map<string, number>
+  /**
+   * Set when the table is emitted as an Excel Table. Holds each column's header
+   * text, which is how a structured reference names it — `costs[Amount]`, not
+   * `costs[amount]`.
+   */
+  table?: {
+    headers: Map<string, string>
+    /** Which aggregate each totalled column uses, so the table's own totals row agrees with ours. */
+    totals: Map<string, string>
+    /**
+     * Headers of derived columns that cannot fill an appended row, because
+     * their formula reads another row and no single stored formula serves
+     * every row. Recorded here so the CLI can say so instead of the file
+     * quietly doing less than the documentation promises.
+     */
+    noFillDown: string[]
+  }
 }
 
 export interface KeyValueAnchor {

@@ -13,6 +13,13 @@ export interface ResolveContext {
   registry: Registry
   definedNames: Map<string, DefinedName>
   sheet: string
+  /**
+   * The row this formula is being written into. Only used inside an Excel
+   * Table, where a reference to the same row is written `[@Amount]` — which is
+   * both the idiomatic form and, being row-independent, the form that lets one
+   * stored formula fill every appended row.
+   */
+  row?: number
 }
 
 export interface ResolvedRef {
@@ -118,7 +125,16 @@ function resolveName(ref: NameRef, context: ResolveContext): ResolvedRef {
     sheet: anchor.sheet,
     rect: { r: addr.r, c: addr.c, rows: 1, cols: 1 },
   }
-  if (defined && defined.sheet === anchor.sheet && defined.addr.r === addr.r) {
+  // The column was missing from this check, so a name that had been overwritten
+  // by a block in another column still serialized as the bare name — pointing
+  // Excel at a different cell than the one evaluated. Compile-time collision
+  // detection makes that unreachable; this stays as the second lock.
+  if (
+    defined &&
+    defined.sheet === anchor.sheet &&
+    defined.addr.r === addr.r &&
+    defined.addr.c === addr.c
+  ) {
     resolved.name = ref.key
   }
   return resolved
@@ -126,7 +142,66 @@ function resolveName(ref: NameRef, context: ResolveContext): ResolvedRef {
 
 const ABSOLUTE = { absoluteRow: true, absoluteCol: true } as const
 
+/**
+ * `costs[Amount]` rather than `B2:B13`. The point is what happens on the
+ * recipient's screen: Excel takes a row typed below the table into the table,
+ * and every structured reference follows. A plain range would still end where
+ * it did, and the total would silently stop including the new row.
+ *
+ * Only the whole-column range gets this. A single cell inside a row stays A1,
+ * because the structured form for it (`[@Amount]`) is relative to the row the
+ * formula sits in, and ours are written per cell at absolute addresses.
+ */
+function structuredRef(ref: Ref, context: ResolveContext): string | undefined {
+  if (ref.kind !== 'range' || ref.part !== 'column' || ref.column === undefined) return undefined
+  const anchor = context.registry.get(ref.block)
+  if (anchor?.kind !== 'table' || !anchor.table) return undefined
+  const header = anchor.table.headers.get(ref.column)
+  if (header === undefined) return undefined
+  // A header holding [ ] # ' or @ has to be escaped with a single quote, or the
+  // reference parses as something else entirely.
+  const escaped = header.replace(/([[\]#'@])/g, "'$1")
+  return `${anchor.name}[${escaped}]`
+}
+
+/**
+ * `costs[[#This Row],[Amount]]` — this row's cell of that column. Only valid for
+ * a formula that itself sits in the table's data rows, which is why it needs the
+ * writer to say which row it is serialising.
+ *
+ * **Not `[@Amount]`.** That is the shorthand Excel shows in the formula bar, not
+ * a form the file may contain: written into `<f>` it is read back as `#REF!`,
+ * and every derived column in the workbook is broken the moment it opens.
+ * LibreOffice computes the long form correctly too, so nothing is traded away.
+ */
+function sameRowRef(ref: Ref, context: ResolveContext): string | undefined {
+  if (ref.kind !== 'cell' || ref.absolute === true) return undefined
+  if (context.row === undefined) return undefined
+  const anchor = context.registry.get(ref.block)
+  if (anchor?.kind !== 'table' || !anchor.table || anchor.sheet !== context.sheet) return undefined
+  if (context.row < anchor.firstDataRow || context.row > anchor.lastDataRow) return undefined
+
+  const resolved = resolveRef(ref, context)
+  // A reference to another row — `r.prev()` — stays A1, and Excel adjusts it
+  // relatively when it fills an appended row, which is the behaviour we want.
+  if (resolved.rect.r !== context.row) return undefined
+
+  const header = anchor.table.headers.get(ref.column)
+  if (header === undefined) return undefined
+  return escapeHeader(anchor.name, header)
+}
+
+function escapeHeader(name: string, header: string): string {
+  return `${name}[[#This Row],[${header.replace(/([[\]#'@])/g, "'$1")}]]`
+}
+
 export function refToA1(ref: Ref, context: ResolveContext): string {
+  const sameRow = sameRowRef(ref, context)
+  if (sameRow) return sameRow
+
+  const structured = structuredRef(ref, context)
+  if (structured) return structured
+
   const resolved = resolveRef(ref, context)
   if (resolved.name) return resolved.name
 

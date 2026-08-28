@@ -1,5 +1,16 @@
 # @open-sheet/cli
 
+## 0.2.0
+
+### Minor Changes
+
+- The scaffolded workspace carries the current `sheet-authoring` skill, including
+  the new references for printing and for what the recipient can do with the
+  exported file. A test now compares the shipped copy against the framework's own
+  byte for byte — the build script that syncs them was invisible to Turbo's cache,
+  so a skill edit did not invalidate the CLI build and the template shipped stale.
+
+
 ## 0.1.9
 
 ## 0.1.8
@@ -21,6 +32,14 @@
 ## 0.1.0
 
 ### Minor Changes
+
+- The scaffolded workspace carries the current `sheet-authoring` skill, including
+  the new references for printing and for what the recipient can do with the
+  exported file. A test now compares the shipped copy against the framework's
+  own byte for byte — the build script that syncs them was invisible to Turbo's
+  cache, so a skill edit did not invalidate the CLI build and the template
+  shipped stale.
+
 
 - 6832304: First release. Author a workbook as JSX with named data columns and export a
   `.xlsx` containing live formulas — no cell address appears anywhere in the

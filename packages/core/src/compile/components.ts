@@ -1,26 +1,30 @@
 import type { Expr, ExprInput } from '../formula/expr.js'
+import { lift } from '../formula/expr.js'
 import { parseFormula } from '../formula/parse.js'
 import type { CellValue } from '../model/cell.js'
 import type { Addr, Size } from '../model/geometry.js'
-import type { Ref, RowContext } from '../refs/ref.js'
+import type { Validation } from '../model/validation.js'
+import type { Ref } from '../refs/ref.js'
 import { isRef } from '../refs/ref.js'
 import { asBlocks, asRuns, asSheets } from './children.js'
 import type {
   Aggregate,
   Block,
   CellNode,
+  ChartAxes,
   ChartKind,
   ChartNode,
   ChartSeries,
   ColumnSpec,
-  DataBar,
   KpiBandNode,
   KpiItem,
   NoteNode,
   PrintSetup,
   RowNode,
   SheetNode,
+  SheetProtection,
   SpacerNode,
+  SpillNode,
   StackNode,
   TableNode,
   WorkbookNode,
@@ -56,6 +60,8 @@ export function Sheet(props: {
   origin?: Addr
   /** How this sheet prints. Forms want `{ orientation: 'portrait', fitToWidth: true }`. */
   print?: PrintSetup
+  /** Lock everything but the named blocks' inputs, so a reader cannot type over a formula. */
+  protect?: SheetProtection
   children?: unknown
 }): SheetNode {
   if (!props.name) throw new TypeError('<Sheet> requires a name')
@@ -67,6 +73,7 @@ export function Sheet(props: {
   if (props.freeze !== undefined) node.freeze = props.freeze
   if (props.origin !== undefined) node.origin = props.origin
   if (props.print !== undefined) node.print = props.print
+  if (props.protect !== undefined) node.protect = props.protect
   return node
 }
 
@@ -78,16 +85,12 @@ export function Row(props: { gap?: number; children?: unknown }): RowNode {
   return { kind: 'row', gap: props.gap ?? 1, children: asBlocks(props.children, 'Row') }
 }
 
-export interface ColumnOptions<T> {
-  header?: string
-  format?: string
-  width?: number
-  style?: string
-  bar?: boolean | DataBar
-  wrap?: boolean
-  value?: (row: T, index: number) => CellValue
-  formula?: ((row: RowContext<T>) => ExprInput | null | undefined) | string
-}
+/**
+ * Derived rather than restated. As a hand-written duplicate it silently fell
+ * behind ColumnSpec — `validate` was added to the spec, accepted by the
+ * compiler, and rejected by `col()`, which is the only way anyone writes one.
+ */
+export type ColumnOptions<T> = Omit<ColumnSpec<T>, 'key'>
 
 export function col<T = any>(key: string, options: ColumnOptions<T> = {}): ColumnSpec<T> {
   return { key, ...options }
@@ -102,6 +105,13 @@ export interface KeyValueEntry {
 
 interface GridTableProps<T> {
   name: string
+  /**
+   * Off by default. A register wants the arrows; a printed invoice does not, and
+   * they show up in print.
+   */
+  filter?: boolean
+  /** Let the recipient append rows below the table and have the ranges follow. */
+  appendable?: boolean
   data: readonly T[]
   columns: ColumnSpec<T>[]
   kind?: 'grid'
@@ -153,6 +163,23 @@ export function Table<T = any>(props: TableProps<T>): TableNode<T> {
   if (props.title !== undefined) node.title = props.title
   if (props.total !== undefined) node.total = props.total
   if (props.style !== undefined) node.style = props.style
+  if (props.filter !== undefined) node.filter = props.filter
+  if (props.appendable !== undefined) node.appendable = props.appendable
+  if (props.appendable && props.showHeader === false) {
+    throw new TypeError(
+      `<Table name="${props.name}" appendable> has showHeader={false} — an Excel Table names its columns by their headers, so it needs them`,
+    )
+  }
+  if (props.appendable && props.filter) {
+    throw new TypeError(
+      `<Table name="${props.name}"> has both appendable and filter — an Excel Table brings its own filter arrows, so filter is redundant and Excel rejects the second one. Drop filter.`,
+    )
+  }
+  if (props.filter && props.showHeader === false) {
+    throw new TypeError(
+      `<Table name="${props.name}" filter> has showHeader={false} — the filter arrows live on the header row, so there is nowhere to put them`,
+    )
+  }
   return node
 }
 
@@ -169,6 +196,8 @@ export function Cell(props: {
   format?: string
   style?: string
   span?: Size
+  validate?: Validation
+  note?: string
 }): CellNode {
   const node: CellNode = { kind: 'cell' }
   if (props.value !== undefined) node.value = props.value
@@ -176,6 +205,8 @@ export function Cell(props: {
   if (props.format !== undefined) node.format = props.format
   if (props.style !== undefined) node.style = props.style
   if (props.span !== undefined) node.span = props.span
+  if (props.validate !== undefined) node.validate = props.validate
+  if (props.note !== undefined) node.note = props.note
   return node
 }
 
@@ -195,6 +226,8 @@ export function Chart(props: {
   title?: string
   categories: Ref
   series: ChartSeries[]
+  axes?: ChartAxes
+  dataLabels?: boolean
   rows?: number
   cols?: number
 }): ChartNode {
@@ -208,6 +241,35 @@ export function Chart(props: {
     cols: props.cols ?? 6,
   }
   if (props.title !== undefined) node.title = props.title
+  if (props.axes !== undefined) node.axes = props.axes
+  if (props.dataLabels !== undefined) node.dataLabels = props.dataLabels
+  return node
+}
+
+/**
+ * `rows` and `cols` are required rather than inferred: the size of a FILTER or
+ * SORT result is not knowable until recalculation, and a placement engine that
+ * guessed would be guessing about collisions too. Declaring it makes the
+ * footprint the author's decision and the layout deterministic.
+ */
+export function Spill(props: {
+  formula: Expr | Ref
+  rows: number
+  cols: number
+  format?: string
+  style?: string
+}): SpillNode {
+  if (!(props.rows >= 1 && props.cols >= 1)) {
+    throw new TypeError('<Spill> needs rows and cols of at least 1 — how much room to reserve')
+  }
+  const node: SpillNode = {
+    kind: 'spill',
+    expr: lift(props.formula),
+    rows: props.rows,
+    cols: props.cols,
+  }
+  if (props.format !== undefined) node.format = props.format
+  if (props.style !== undefined) node.style = props.style
   return node
 }
 

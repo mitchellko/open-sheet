@@ -4,6 +4,7 @@ import type { CompiledSheet } from '../../compile/emit.js'
 import type { ValueMap } from '../../formula/evaluate.js'
 import { isExcelError, isNotEvaluated } from '../../formula/value.js'
 import { columnName } from '../../model/a1.js'
+import { readsFromValues } from '../../model/cell.js'
 import { formatValue, toStyleObject } from '../../style/css.js'
 import { DEFAULT_THEME, resolveStyle } from '../../style/theme.js'
 import { mergeStyle } from '../../style/types.js'
@@ -211,7 +212,9 @@ interface CellProps {
 
 function GridCell({ sheet, values, r, c, left, width, selected, onSelect }: CellProps) {
   const cell = sheet.cells.get(`${r},${c}`)
-  const computed = cell?.expr ? values.get(`${sheet.name}!${r},${c}`) : (cell?.value ?? null)
+  const computed = readsFromValues(cell)
+    ? values.get(`${sheet.name}!${r},${c}`)
+    : (cell?.value ?? null)
 
   let text = ''
   let tone = ''

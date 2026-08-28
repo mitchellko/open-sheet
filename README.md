@@ -4,9 +4,12 @@
 
 [![npm](https://img.shields.io/npm/v/@open-sheet/core?style=flat&label=%40open-sheet%2Fcore)](https://www.npmjs.com/package/@open-sheet/core)
 [![CI](https://github.com/lianghsun/open-sheet/actions/workflows/ci.yml/badge.svg)](https://github.com/lianghsun/open-sheet/actions/workflows/ci.yml)
+[![open-sheet.dev](https://img.shields.io/badge/open--sheet.dev-0b1020?style=flat&logo=cloudflare&logoColor=white)](https://open-sheet.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](https://opensource.org/licenses/MIT)
 
 **English** · [繁體中文](README.zh-TW.md)
+
+**[open-sheet.dev](https://open-sheet.dev)** — what it is, and what the file you hand over can do.
 
 **The spreadsheet framework built for agents.** Describe the model you need in natural language — your coding agent writes the React. open-sheet handles the cell addressing, the formula references, the recalculation, and the export.
 

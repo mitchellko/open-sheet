@@ -2,6 +2,7 @@ import type { CompiledWorkbook } from '../compile/emit.js'
 import { originOf } from '../compile/origin.js'
 import { fromA1, toA1 } from '../model/a1.js'
 import { type Cell, cellKey, parseCellKey } from '../model/cell.js'
+import type { Size } from '../model/geometry.js'
 import { type ResolveContext, resolveRef } from '../refs/resolve.js'
 import type { BinaryOp, Expr } from './expr.js'
 import { lookup } from './functions.js'
@@ -11,6 +12,7 @@ import {
   errorFrom,
   isExcelError,
   isNotEvaluated,
+  NA,
   NOT_EVALUATED,
   NUM,
   VALUE,
@@ -28,6 +30,45 @@ type Value = Computed | Computed[]
 
 function isArray(value: Value): value is Computed[] {
   return Array.isArray(value)
+}
+
+/**
+ * A range is read row-major into a flat array, which loses whether it was a
+ * column or a row. Most functions do not care — SUM of nine cells is the same
+ * either way. The array-returning ones do: formulajs reads a flat array as one
+ * row, so SORT on a column of numbers sorts a single row by its first column
+ * and hands it back untouched, looking for all the world like it worked.
+ */
+const SHAPE_SENSITIVE: ReadonlySet<string> = new Set([
+  'SORT',
+  'SORTBY',
+  'UNIQUE',
+  'FILTER',
+  'TRANSPOSE',
+])
+
+const shapes = new WeakMap<Computed[], Size>()
+
+function shaped(items: Computed[], rows: number, cols: number): Computed[] {
+  shapes.set(items, { rows, cols })
+  return items
+}
+
+/** Carries a shape onto a derived array, so `(range>4)` stays a column. */
+function reshape(out: Computed[], from: Value): Computed[] {
+  const shape = isArray(from) ? shapes.get(from) : undefined
+  if (shape && shape.rows * shape.cols === out.length) shapes.set(out, shape)
+  return out
+}
+
+function toGrid(value: Value): Computed[][] {
+  if (!isArray(value)) return [[value]]
+  const shape = shapes.get(value) ?? { rows: 1, cols: value.length }
+  const grid: Computed[][] = []
+  for (let r = 0; r < shape.rows; r += 1) {
+    grid.push(value.slice(r * shape.cols, (r + 1) * shape.cols))
+  }
+  return grid
 }
 
 function key(sheet: string, r: number, c: number): string {
@@ -107,6 +148,24 @@ export function evaluateWorkbook(book: CompiledWorkbook): ValueMap {
     const node = nodes.get(id)
     if (!node) return null
 
+    if (node.cell.spillFrom) {
+      // Visiting the origin fills this cell in passing. Marked visiting first,
+      // so a formula that spills over a cell it reads is caught as the cycle
+      // it is rather than reading a half-written value.
+      state.set(id, 'visiting')
+      stack.push(id)
+      try {
+        const from = parseCellKey(node.cell.spillFrom)
+        visit(key(node.sheet, from.r, from.c))
+      } finally {
+        stack.pop()
+      }
+      const filled = values.get(id) ?? null
+      values.set(id, filled)
+      state.set(id, 'done')
+      return filled
+    }
+
     if (!node.cell.expr) {
       const literal = node.cell.value ?? null
       values.set(id, literal)
@@ -118,7 +177,13 @@ export function evaluateWorkbook(book: CompiledWorkbook): ValueMap {
     stack.push(id)
     let result: Computed
     try {
-      result = evaluateExpr(node.cell.expr, contextFor(node.sheet), read)
+      const raw = evaluateValue(node.cell.expr, contextFor(node.sheet), read)
+      if (node.cell.spill) {
+        fill(raw, node, node.cell.spill)
+        result = values.get(id) ?? null
+      } else {
+        result = collapse(raw)
+      }
     } catch (error) {
       if (error instanceof CycleError) throw error
       // A resolution failure surfaces here, far from the formula that caused it.
@@ -132,6 +197,26 @@ export function evaluateWorkbook(book: CompiledWorkbook): ValueMap {
     values.set(id, result)
     state.set(id, 'done')
     return result
+  }
+
+  /**
+   * Writes one array across the rectangle its formula reserved. Cells the array
+   * does not reach get #N/A — which is what a real spreadsheet shows for an
+   * array formula wider than its result, and is visibly not a number.
+   */
+  function fill(value: Value, node: Node, size: Size): void {
+    // Not computed means not computed everywhere in the rectangle. Filling the
+    // first cell with #NOT_EVALUATED and the rest with #N/A would claim a
+    // spreadsheet condition we have no evidence for.
+    const items = isNotEvaluated(value) ? null : Array.isArray(value) ? value : [value]
+    let i = 0
+    for (let r = 0; r < size.rows; r += 1) {
+      for (let c = 0; c < size.cols; c += 1) {
+        const item = items === null ? NOT_EVALUATED : (items[i] ?? NA)
+        i += 1
+        values.set(key(node.sheet, node.r + r, node.c + c), item)
+      }
+    }
   }
 
   function read(sheet: string, r: number, c: number): Computed {
@@ -201,7 +286,7 @@ function readAddr(reference: string, context: ResolveContext, read: Reader): Com
       out.push(read(context.sheet, r, c))
     }
   }
-  return out
+  return shaped(out, Math.abs(b.r - a.r) + 1, Math.abs(b.c - a.c) + 1)
 }
 
 function readRef(expr: Expr & { k: 'ref' }, context: ResolveContext, read: Reader): Computed[] {
@@ -212,6 +297,7 @@ function readRef(expr: Expr & { k: 'ref' }, context: ResolveContext, read: Reade
       out.push(read(resolved.sheet, r, c))
     }
   }
+  shaped(out, resolved.rect.rows, resolved.rect.cols)
   return out
 }
 
@@ -235,7 +321,7 @@ function toText(value: Computed): string | Computed {
 }
 
 function mapValue(value: Value, fn: (item: Computed) => Computed): Value {
-  return isArray(value) ? value.map(fn) : fn(value)
+  return isArray(value) ? reshape(value.map(fn), value) : fn(value)
 }
 
 /** Elementwise where either side is an array, as Excel does. */
@@ -248,7 +334,7 @@ function broadcast(op: BinaryOp, left: Value, right: Value): Value {
 
   const out: Computed[] = []
   for (let i = 0; i < length; i += 1) out.push(applyOp(op, at(left, i), at(right, i)))
-  return out
+  return reshape(out, isArray(left) && shapes.has(left) ? left : right)
 }
 
 function applyOp(op: BinaryOp, left: Computed, right: Computed): Computed {
@@ -265,7 +351,7 @@ function applyOp(op: BinaryOp, left: Computed, right: Computed): Computed {
   }
 
   if (op === '=' || op === '<>') {
-    const equal = normalizeForCompare(left) === normalizeForCompare(right)
+    const equal = equals(left, right)
     return op === '=' ? equal : !equal
   }
 
@@ -298,10 +384,36 @@ function applyOp(op: BinaryOp, left: Computed, right: Computed): Computed {
   }
 }
 
-function normalizeForCompare(value: Computed): string | number | boolean | null {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value.toLowerCase()
-  return value as string | number | boolean
+function isBlank(value: Computed): boolean {
+  return value === null || value === undefined
+}
+
+/**
+ * A blank cell takes the empty value of whatever it is compared against, which
+ * is why `blank = 0` and `blank = ""` are both TRUE while `0 = ""` is FALSE —
+ * the relation is not transitive, so a blank cannot simply be normalised to one
+ * or the other. Verified against LibreOffice rather than assumed.
+ */
+function equals(left: Computed, right: Computed): boolean {
+  const leftBlank = isBlank(left)
+  const rightBlank = isBlank(right)
+  if (leftBlank && rightBlank) return true
+  if (leftBlank) return isEmptyFor(right)
+  if (rightBlank) return isEmptyFor(left)
+
+  if (typeof left === 'string' && typeof right === 'string') {
+    // Excel's text comparison ignores case.
+    return left.toLowerCase() === right.toLowerCase()
+  }
+  return left === right
+}
+
+/** The value a blank equals when compared with something of this type. */
+function isEmptyFor(value: Computed): boolean {
+  if (typeof value === 'number') return value === 0
+  if (typeof value === 'string') return value === ''
+  if (typeof value === 'boolean') return value === false
+  return false
 }
 
 /**
@@ -329,6 +441,31 @@ function applyLazyFn(
     if (isNotEvaluated(result)) return NOT_EVALUATED
     const caught = isExcelError(result) && (name === 'IFERROR' || result.code === '#N/A')
     return caught ? evaluateExpr(fallback, context, read) : result
+  }
+
+  // These exist to *inspect* a value, so the argument loop's "an error argument
+  // makes the call an error" rule is exactly wrong for them: ISERROR(1/0) was
+  // returning #DIV/0! where every spreadsheet returns TRUE. Implemented here
+  // rather than passed to the library, which has no way to read our errors.
+  if (PREDICATES.has(name)) {
+    const [only] = expr.args
+    if (!only) return undefined
+    const value = evaluateExpr(only, context, read)
+    if (isNotEvaluated(value)) return NOT_EVALUATED
+    switch (name) {
+      case 'ISERROR':
+        return isExcelError(value)
+      case 'ISNA':
+        return isExcelError(value) && value.code === '#N/A'
+      case 'ISBLANK':
+        return value === null
+      case 'ISNUMBER':
+        return typeof value === 'number'
+      case 'ISTEXT':
+        return typeof value === 'string'
+      default:
+        return undefined
+    }
   }
 
   if (name === 'IF') {
@@ -361,6 +498,14 @@ function truthy(value: Computed): boolean {
  */
 const ELEMENTWISE: ReadonlySet<string> = new Set(['ABS', 'ROUND', 'ROUNDUP', 'ROUNDDOWN', 'NOT'])
 
+const PREDICATES: ReadonlySet<string> = new Set([
+  'ISERROR',
+  'ISNA',
+  'ISBLANK',
+  'ISNUMBER',
+  'ISTEXT',
+])
+
 function applyFn(expr: Expr & { k: 'fn' }, context: ResolveContext, read: Reader): Value {
   const lazy = applyLazyFn(expr, context, read)
   if (lazy !== undefined) return lazy
@@ -388,8 +533,11 @@ function applyFn(expr: Expr & { k: 'fn' }, context: ResolveContext, read: Reader
     }
   }
 
-  const result = implementation(...args)
-  return fromLibrary(result)
+  // These read their arguments as rectangles, so they must be handed rectangles.
+  const result = SHAPE_SENSITIVE.has(expr.name.toUpperCase())
+    ? implementation(...args.map(toGrid))
+    : implementation(...args)
+  return valueFromLibrary(result)
 }
 
 /**
@@ -400,6 +548,21 @@ function applyFn(expr: Expr & { k: 'fn' }, context: ResolveContext, read: Reader
  * #NOT_EVALUATED says the true thing: we did not compute this. It is not
  * catchable, and it counts in the "not evaluated" badge.
  */
+/**
+ * The library returns array results as rows of columns. Flattened row-major
+ * here and given its shape by the footprint the author declared — the array
+ * supplies the order, `<Spill rows cols>` supplies the rectangle.
+ */
+function valueFromLibrary(result: unknown): Value {
+  if (!Array.isArray(result)) return fromLibrary(result)
+  const flat: Computed[] = []
+  for (const row of result) {
+    if (Array.isArray(row)) for (const item of row) flat.push(fromLibrary(item))
+    else flat.push(fromLibrary(row))
+  }
+  return flat
+}
+
 function fromLibrary(result: unknown): Computed {
   if (result === null || result === undefined) return null
   if (typeof result === 'number') return Number.isFinite(result) ? result : NUM
@@ -408,7 +571,42 @@ function fromLibrary(result: unknown): Computed {
     return result === '#VALUE!' ? NOT_EVALUATED : errorFrom(result)
   }
   if (typeof result === 'boolean') return result
-  if (result instanceof Error) return NOT_EVALUATED
+  // The library reports Excel's own errors as Error objects whose message is the
+  // error code. Treating those as "we could not compute" was wrong twice over:
+  // it hid a real spreadsheet condition, and it made IFNA unable to catch the
+  // #N/A that a failed MATCH exists to produce.
+  if (result instanceof Error) {
+    const code = result.message.trim()
+    return /^#[A-Z0-9/?!]+$/.test(code) ? errorFrom(code) : NOT_EVALUATED
+  }
   if (Array.isArray(result)) return NOT_EVALUATED
+  // A date in a workbook *is* a number — the serial — with a format on top. The
+  // library hands back a Date, and treating that as "cannot compute" broke every
+  // date chain at its first call.
+  if (result instanceof Date) return toSerial(result)
   return NOT_EVALUATED
+}
+
+/**
+ * Excel counts days from 1899-12-30, an epoch that exists because 1900 is
+ * treated as a leap year for compatibility with Lotus 1-2-3. Dates before
+ * 1900-03-01 are off by one in every spreadsheet; matching that is the point.
+ */
+const EXCEL_EPOCH_UTC = Date.UTC(1899, 11, 30)
+const DAY_MS = 86_400_000
+
+export function toSerial(date: Date): number {
+  const utc = Date.UTC(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+  )
+  return (utc - EXCEL_EPOCH_UTC) / DAY_MS
+}
+
+export function fromSerial(serial: number): Date {
+  return new Date(EXCEL_EPOCH_UTC + Math.round(serial * DAY_MS))
 }

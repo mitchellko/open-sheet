@@ -25,6 +25,8 @@ export interface BuildResult {
   files: string[]
   notEvaluated: number
   warnings: string[]
+  /** Not defects — things the author has to relay to whoever opens the file. */
+  notes: string[]
 }
 
 export async function build(options: BuildOptions = {}): Promise<BuildResult[]> {
@@ -65,6 +67,7 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult[]> 
 
       const files: string[] = []
       const warnings: string[] = []
+      const notes: string[] = []
       const title = module.meta?.title ?? id
 
       const xlsx = join(outDir, `${id}.xlsx`)
@@ -100,7 +103,29 @@ export async function build(options: BuildOptions = {}): Promise<BuildResult[]> 
         }
       }
 
-      results.push({ id, title, files, notEvaluated, warnings })
+      for (const anchor of book.registry.values()) {
+        if (anchor.kind !== 'table' || !anchor.table) continue
+        if (anchor.table.noFillDown.length > 0) {
+          warnings.push(
+            `table "${anchor.name}" is appendable, but ${anchor.table.noFillDown.join(', ')} ` +
+              'will be blank on a row the recipient appends — those formulas read another row, ' +
+              'so no single stored formula serves every row',
+          )
+        }
+        // Measured in Excel, not assumed: with a totals row present, typing
+        // below it does not extend the table and neither does Tab from the last
+        // cell. Inserting above the totals row does. The recipient will type
+        // before they read anything, so the author has to tell them.
+        if (anchor.totalRow !== undefined) {
+          notes.push(
+            `table "${anchor.name}" is appendable and has a total row, so a reader must ` +
+              'INSERT a row above the total — typing below it does not extend the table. ' +
+              'Say so in a <Note> beside it.',
+          )
+        }
+      }
+
+      results.push({ id, title, files, notEvaluated, warnings, notes })
     }
   } finally {
     await loader.close()

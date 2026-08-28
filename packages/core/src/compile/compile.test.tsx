@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { evaluateWorkbook } from '../formula/evaluate.js'
+import { toFormula } from '../formula/serialize.js'
 import { cellKey } from '../model/cell.js'
 import { ref } from '../refs/ref.js'
 import { compile } from './compile.js'
-import { col, KpiBand, Sheet, Stack, Table, Workbook } from './components.js'
+import { col, KpiBand, Row, Sheet, Stack, Table, Workbook } from './components.js'
 import { budget, QUARTERS, type Quarter, sideBySide } from './fixtures.js'
 import type { TableAnchor } from './registry.js'
 
@@ -50,8 +51,14 @@ describe('the JSX pipeline', () => {
 
   it('registers key-value entries as defined names', () => {
     const book = compile(budget())
-    expect(book.definedNames.get('growth')).toEqual({ sheet: 'Assumptions', addr: { r: 1, c: 1 } })
-    expect(book.definedNames.get('taxRate')).toEqual({ sheet: 'Assumptions', addr: { r: 2, c: 1 } })
+    expect(book.definedNames.get('growth')).toMatchObject({
+      sheet: 'Assumptions',
+      addr: { r: 1, c: 1 },
+    })
+    expect(book.definedNames.get('taxRate')).toMatchObject({
+      sheet: 'Assumptions',
+      addr: { r: 2, c: 1 },
+    })
   })
 
   it('leaves a formula cell empty when the column returns null', () => {
@@ -200,5 +207,76 @@ describe('a bare ref is accepted wherever the docs say it is', () => {
       </Workbook>,
     )
     expect(evaluateWorkbook(book).get('S!4,1')).toBe(4)
+  })
+})
+
+describe('defined names must be usable as Excel defined names', () => {
+  const twoBlocks = (leftKey: string, rightKey: string) =>
+    compile(
+      <Workbook>
+        <Sheet name="S">
+          <Row gap={2}>
+            <Table name="left" kind="keyValue" data={[{ key: leftKey, label: 'G', value: 0.1 }]} />
+            <Table
+              name="right"
+              kind="keyValue"
+              data={[{ key: rightKey, label: 'G', value: 0.2 }]}
+            />
+          </Row>
+        </Sheet>
+      </Workbook>,
+    )
+
+  it('refuses two blocks claiming one name', () => {
+    // Reported by @ericweichun (#52). The evaluator resolved through the block
+    // the author named while the exported formula used a defined name the other
+    // block had overwritten — so the viewer showed 0.1 and Excel computed 0.2.
+    expect(() => twoBlocks('growth', 'growth')).toThrow(/duplicate defined name "growth"/)
+    expect(() => twoBlocks('growth', 'growth')).toThrow(/"left" and "right"/)
+  })
+
+  it('treats names as case-insensitive, as Excel does', () => {
+    expect(() => twoBlocks('growth', 'Growth')).toThrow(/duplicate defined name/)
+  })
+
+  it('allows distinct names', () => {
+    const book = twoBlocks('growthA', 'growthB')
+    expect([...book.definedNames.keys()].sort()).toEqual(['growthA', 'growthB'])
+  })
+
+  it.each([
+    ['B5', /looks like a cell address/],
+    ['my key', /letters, digits, underscore/],
+    ['2024', /must start with a letter/],
+    ['c', /reserved by Excel/],
+    ['', /is empty/],
+  ])('refuses %s as a key', (key, message) => {
+    expect(() => twoBlocks(key, 'other')).toThrow(message)
+  })
+})
+
+describe('a reference never serializes to a cell it did not resolve', () => {
+  it('falls back to an address when the name points elsewhere', () => {
+    // The second lock behind the compile-time check: even if a stale name
+    // reached the serializer, it must not be used unless sheet, row *and*
+    // column match. The column was the part missing.
+    const book = compile(
+      <Workbook>
+        <Sheet name="S">
+          <Table name="a" kind="keyValue" data={[{ key: 'rate', label: 'R', value: 1 }]} />
+        </Sheet>
+      </Workbook>,
+    )
+    const entry = book.definedNames.get('rate')
+    if (!entry) throw new Error('no defined name')
+    book.definedNames.set('rate', { ...entry, addr: { r: entry.addr.r, c: entry.addr.c + 9 } })
+
+    const formula = toFormula(ref('a').get('rate'), {
+      registry: book.registry,
+      definedNames: book.definedNames,
+      sheet: 'S',
+    })
+    expect(formula).not.toBe('=rate')
+    expect(formula).toMatch(/^=[A-Z]+\d+$/)
   })
 })

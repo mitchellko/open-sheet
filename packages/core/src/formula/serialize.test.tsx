@@ -5,6 +5,7 @@ import { ref } from '../refs/ref.js'
 import type { ResolveContext } from '../refs/resolve.js'
 import { evaluateWorkbook } from './evaluate.js'
 import { add, div, mul, neg, raw, sub, sum } from './expr.js'
+import { parseFormula } from './parse.js'
 import { toFormula } from './serialize.js'
 
 function contextFor(sheet: string): ResolveContext {
@@ -148,5 +149,41 @@ describe('raw as a tagged template', () => {
 
   it('keeps the plain string form working', () => {
     expect(toFormula(raw('=XIRR(A1:A9,B1:B9)'), pl())).toBe('=XIRR(A1:A9,B1:B9)')
+  })
+})
+
+describe('functions newer than Excel 2007', () => {
+  const pl = () => contextFor('P&L')
+
+  it('are stored with the _xlfn prefix the format requires', () => {
+    // Verified against LibreOffice: `IFS(...)` gives #NAME?, `_xlfn.IFS(...)`
+    // computes. The prefix is how the file stores it; Excel displays the bare
+    // name, so the author never sees it.
+    expect(toFormula({ k: 'fn', name: 'IFS', args: [{ k: 'lit', v: 1 }] }, pl())).toBe(
+      '=_xlfn.IFS(1)',
+    )
+    expect(toFormula({ k: 'fn', name: 'SWITCH', args: [{ k: 'lit', v: 1 }] }, pl())).toBe(
+      '=_xlfn.SWITCH(1)',
+    )
+  })
+
+  it('leaves functions that predate it alone', () => {
+    expect(toFormula({ k: 'fn', name: 'SUM', args: [{ k: 'lit', v: 1 }] }, pl())).toBe('=SUM(1)')
+    expect(toFormula({ k: 'fn', name: 'IFERROR', args: [{ k: 'lit', v: 1 }] }, pl())).toBe(
+      '=IFERROR(1)',
+    )
+  })
+
+  it('reads the prefix back off, since the author never wrote it', () => {
+    expect(parseFormula('=_xlfn.SUM(1,2)').expr).toMatchObject({ k: 'fn', name: 'SUM' })
+    expect(parseFormula('=_xlfn.IFS(1,2)').expr).toMatchObject({ k: 'fn', name: 'IFS' })
+  })
+
+  it('names the bare function when an _xlfn one degrades, never the prefix', () => {
+    // `_xlfn.` is a storage detail of the file format; an author who never
+    // wrote it should never have to read it in an error message.
+    const parsed = parseFormula('=_xlfn.BESSELJ(1,2)')
+    expect(parsed.reason ?? '').toContain('BESSELJ')
+    expect(parsed.reason ?? '').not.toContain('_xlfn')
   })
 })

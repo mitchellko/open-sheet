@@ -40,6 +40,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/mcp
 
+  apps/social:
+    dependencies:
+      '@open-sheet/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+
   packages/cli:
     devDependencies:
       '@types/node':

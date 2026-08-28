@@ -1,5 +1,19 @@
 # @open-sheet/mcp
 
+## 0.2.0
+
+### Minor Changes
+
+- Tracks `@open-sheet/core` 0.2.0.
+
+### Patch Changes
+
+- Updated dependencies [10efe56]
+- Updated dependencies [240fda5]
+- Updated dependencies [ed2c38e]
+- Updated dependencies [bd8c2d7]
+  - @open-sheet/core@0.2.0
+
 ## 0.1.9
 
 ### Patch Changes

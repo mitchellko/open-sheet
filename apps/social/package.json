@@ -1,0 +1,12 @@
+{
+  "name": "@open-sheet/social",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "dependencies": {
+    "@open-sheet/core": "workspace:*"
+  }
+}

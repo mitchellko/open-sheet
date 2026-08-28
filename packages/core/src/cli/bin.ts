@@ -108,6 +108,7 @@ export async function run(argv: string[]): Promise<number> {
         `  note: ${result.notEvaluated} cell(s) exported as live formulas but not evaluated here\n`,
       )
     }
+    for (const note of result.notes) process.stdout.write(`  note: ${note}\n`)
     for (const warning of result.warnings) process.stdout.write(`  warning: ${warning}\n`)
   }
 

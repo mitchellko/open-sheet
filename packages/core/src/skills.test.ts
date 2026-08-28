@@ -2,6 +2,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { FUNCTIONS } from './formula/expr.js'
+import * as entry from './index.js'
 
 const skills = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
 
@@ -90,5 +92,27 @@ describe.skipIf(!existsSync(skills))('the shipped skills', () => {
       expect(previous, `${name}/SKILL.md duplicates ${previous}`).toBeUndefined()
       seen.set(body, name)
     }
+  })
+
+  /**
+   * The reference told authors to reach for `raw()` on XIRR for two releases
+   * after M7 whitelisted it — steering them to #NOT_EVALUATED for a function
+   * that works. Docs that name functions rot in both directions.
+   */
+  describe('the formula reference', () => {
+    const text = readFileSync(join(skills, 'sheet-authoring', 'references', 'formulas.md'), 'utf8')
+
+    it('names only builders that exist', () => {
+      const table = text.slice(text.indexOf('| Aggregate |'), text.indexOf('\n\nEvery one'))
+      const named = [...table.matchAll(/`([a-z_][a-z_0-9]*)`/g)].map((m) => m[1] as string)
+      expect(named.length).toBeGreaterThan(80)
+      expect(named.filter((name) => !(name in entry))).toEqual([])
+    })
+
+    it('does not send authors to raw() for something we support', () => {
+      for (const match of text.matchAll(/raw\('=([A-Z][A-Z0-9.]*)\(/g)) {
+        expect(FUNCTIONS, `raw() example uses the supported ${match[1]}`).not.toContain(match[1])
+      }
+    })
   })
 })

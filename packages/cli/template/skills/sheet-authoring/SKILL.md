@@ -128,6 +128,8 @@ A number hard-coded inside a formula is a number the recipient cannot change.
 - [references/formulas.md](references/formulas.md) — references, the builder API, the function whitelist
 - [references/formats.md](references/formats.md) — number formats, styles, data bars, themes
 - [references/charts.md](references/charts.md) — what is live and what is not
+- [references/printing.md](references/printing.md) — headers, footers, page breaks, print areas
+- [references/recipients.md](references/recipients.md) — validation and the other affordances the person opening the file gets
 
 ## What the framework cannot check for you
 

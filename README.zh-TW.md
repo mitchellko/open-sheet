@@ -4,9 +4,12 @@
 
 [![npm](https://img.shields.io/npm/v/@open-sheet/core?style=flat&label=%40open-sheet%2Fcore)](https://www.npmjs.com/package/@open-sheet/core)
 [![CI](https://github.com/lianghsun/open-sheet/actions/workflows/ci.yml/badge.svg)](https://github.com/lianghsun/open-sheet/actions/workflows/ci.yml)
+[![open-sheet.dev](https://img.shields.io/badge/open--sheet.dev-0b1020?style=flat&logo=cloudflare&logoColor=white)](https://open-sheet.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](https://opensource.org/licenses/MIT)
 
 [English](README.md) · **繁體中文**
+
+**[open-sheet.dev](https://open-sheet.dev)** —— 它是什麼，以及你交出去的那份檔案能做什麼。
 
 **專為 agent 打造的試算表框架。** 用自然語言描述你要的模型 — 你的 coding agent 負責寫 React，open-sheet 負責儲存格位址、公式參考、重新計算與匯出。
 
@@ -18,6 +21,47 @@
 ```bash
 npx @open-sheet/cli init my-sheets
 ```
+
+## 「這不就是 Claude for Excel 在做的事嗎?」
+
+不同的工具,不同的工作。
+
+> **Claude for Excel 讓一個人更快地做出一份試算表。**
+> **open-sheet 讓那份試算表不需要有人再做第二次。**
+
+| | Claude for Excel | open-sheet |
+| --- | --- | --- |
+| 輸入 | 一份已經存在的活頁簿 | 一份 `.tsx` 原始碼 |
+| 誰在迴圈裡 | 人,每一次 | 人**一次**,在 review 的時候 |
+| 產出 | 那份檔案,改過了 | 同一份檔案,每次重建都一樣 |
+| 要 review 一個改動 | 一份二進位 diff | 一次 code review |
+| 要做 500 次 | 500 個 session | 一個迴圈 |
+| 需要 | Excel、帳號、付費方案 | Node。MIT。 |
+
+在試算表**裡面**工作的助理,寫進儲存格的仍然是 `=SUM(B2:B13)`。那就是一個手寫的
+位址 — 由模型手寫的,但仍然是手寫的。插入一列它就錯了,而且不會有任何東西告訴你。
+這不是模型夠不夠聰明的問題:**A1 是那個媒材唯一的語言。**
+
+open-sheet 寫的是 `ref('pl').column('revenue')`,在編譯期才解析。這不是「比較會寫
+公式」— 是根本不寫位址。
+
+而且算不出來的時候,它會說算不出來。`#NOT_EVALUATED`,絕不給一個看起來合理的數字。
+任何直接往活的儲存格裡寫東西的工具,不管有沒有把握,產出的都是一個「長得像數字的
+東西」—— 那是代價最高、又最看不出來的一種錯。
+
+**Claude for Excel 贏的地方,而且差距不小。** 它寫進去的也是活公式 — 這裡的差別
+從來不是「我們的會重算、它們的不會」。一份不是你產生的活頁簿 — 我們根本讀不了。它用 Excel 自己的引擎,所以它的數字天生就是 Excel 的數字,而我們得靠跨引擎
+比對去掙來這件事。五百多個函式對我們的一百多個。樞紐分析表。「這個變異是什麼造成
+的?」— 那是分析師對一個活模型的問題,不是編譯器的問題。
+
+如果你手上有一份試算表想要幫忙,用那個。這裡處理的是另一件事:當試算表是**管線的
+產出**而不是有人打開來的文件 — 每月的董事會資料包、五百張請款單、資料一進來就重新
+產生的模型。
+
+兩者是可以接起來的,而且順序是這樣:open-sheet 產出活公式,正是為了讓收到的人可以
+打開它、對它提問。
+
+*沒有人因為 Word 有 AI 就說 LaTeX 不該存在。*
 
 ## 為什麼要做
 

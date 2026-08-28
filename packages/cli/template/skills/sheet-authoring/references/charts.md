@@ -55,3 +55,66 @@ there is no chart to position and nothing to fall out of date.
 - Keep a series in one contiguous column with a header
 - Put category labels in their own column
 - No blank rows inside a table — `<Spacer>` goes between blocks, not inside one
+
+## The chart kinds
+
+| | |
+| --- | --- |
+| `bar` · `stackedBar` | comparison; stacked for composition over time |
+| `line` | a trend |
+| `area` · `stackedArea` | the same, filled — stacked is most cost reporting |
+| `pie` | a share of one total |
+| `scatter` | two measures against each other; `categories` becomes the x values |
+| `combo` | bars with a line over them — actual against target |
+
+## Making a chart readable rather than decorative
+
+```tsx
+<Chart
+  kind="bar"
+  categories={ref('pl').column('quarter')}
+  series={[{ name: 'Revenue', values: ref('pl').column('revenue') }]}
+  axes={{ category: 'Quarter', value: 'NT$', valueFormat: 'currency', min: 0 }}
+  dataLabels
+/>
+```
+
+An axis with no title and unformatted numbers is decoration: the reader cannot
+tell thousands from millions, or margin from revenue. `valueFormat` takes the
+same codes cells take. `min`/`max` pin the axis — Excel's automatic zero-based
+scale flattens a series that lives in a narrow band.
+
+`dataLabels` is off by default: on a dense series the numbers collide into an
+unreadable smear.
+
+## Combo, and the second axis
+
+```tsx
+series={[
+  { name: 'Actual', values: ref('pl').column('revenue'), as: 'bar' },
+  { name: 'Target', values: ref('pl').column('attainment'), as: 'line', axis: 'secondary' },
+]}
+```
+
+Each series says how it is drawn. `axis: 'secondary'` gives it the right-hand
+axis, titled with `axes.secondary` — a percentage next to revenue in dollars is
+otherwise a flat line along the bottom of the plot. Bars are drawn before the
+line, so the line sits over them.
+
+## Sparklines
+
+```tsx
+col('trend', { header: 'Trend', sparkline: { of: ['q1', 'q2', 'q3', 'q4'] } })
+```
+
+An in-cell chart of that row's own numbers, one per data row. `kind` is `'line'`
+or `'column'`.
+
+The columns it reads **must be next to each other**. The file format stores one
+range per sparkline, so a gap would silently pull in whatever sits between them
+— possibly a text column. A non-contiguous set is refused at compile time with
+an error naming the columns.
+
+Not every reader keeps them: sparklines are a 2010 extension, and an older
+application will show an empty cell rather than a broken one. The number they
+summarise is in the row beside them either way.

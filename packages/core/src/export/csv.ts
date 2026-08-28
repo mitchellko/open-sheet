@@ -1,6 +1,6 @@
 import type { CompiledSheet } from '../compile/emit.js'
 import { type Computed, display, isExcelError, isNotEvaluated } from '../formula/value.js'
-import { parseCellKey } from '../model/cell.js'
+import { parseCellKey, readsFromValues } from '../model/cell.js'
 
 export interface CsvOptions {
   delimiter?: string
@@ -20,7 +20,9 @@ export function toCsv(
 
   for (const [key, cell] of sheet.cells) {
     const { r, c } = parseCellKey(key)
-    const computed = cell.expr ? values.get(`${sheet.name}!${key}`) : (cell.value ?? null)
+    const computed = readsFromValues(cell)
+      ? values.get(`${sheet.name}!${key}`)
+      : (cell.value ?? null)
 
     let text: string
     if (isNotEvaluated(computed)) {

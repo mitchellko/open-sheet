@@ -1,7 +1,7 @@
 {
   "name": "@open-sheet/mcp",
-  "version": "0.1.9",
-  "description": "MCP server for open-sheet — drive the spreadsheet framework from any agent framework.",
+  "version": "0.2.0",
+  "description": "MCP server for open-sheet \u2014 drive the spreadsheet framework from any agent framework.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,5 +23,6 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "tsdown": "^0.22.14"
-  }
+  },
+  "homepage": "https://open-sheet.dev"
 }

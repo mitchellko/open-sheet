@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { compile } from '../compile/compile.js'
 import { Cell } from '../compile/components.js'
 import { evaluateWorkbook } from './evaluate.js'
-import { mul, raw } from './expr.js'
+import { FUNCTIONS, mul, raw } from './expr.js'
 import { parseFormula } from './parse.js'
 import { serialize } from './serialize.js'
 import { isNotEvaluated } from './value.js'
+
+/**
+ * A function we do not implement and have no plan to. Asserted against the
+ * whitelist so that whitelisting it later fails this test loudly instead of
+ * quietly turning these into tests of nothing — which is what happened when
+ * M7 whitelisted the LOG10 and XIRR this file used to name.
+ */
+const UNSUPPORTED = 'BESSELJ'
 
 const context = { registry: new Map(), definedNames: new Map(), sheet: 'S' } as never
 
@@ -38,13 +46,18 @@ describe('parsing hand-written formulas', () => {
 
   it('does not mistake a function for a cell address', () => {
     // LOG10 lexes like a cell reference until you see the parenthesis.
-    const parsed = parseFormula('=LOG10(A1)')
+    expect(parseFormula('=LOG10(A1)').expr).toMatchObject({ k: 'fn', name: 'LOG10' })
+  })
+
+  it('degrades an unsupported function rather than reading it as a reference', () => {
+    expect(FUNCTIONS).not.toContain(UNSUPPORTED)
+    const parsed = parseFormula(`=${UNSUPPORTED}(A1)`)
     expect(parsed.degraded).toBe(true)
     expect(parsed.reason).toContain('unsupported function')
   })
 
   it('degrades rather than throwing on anything it cannot handle', () => {
-    for (const input of ['=XIRR(A1:A9,B1:B9)', '=SUM(', '=@#$%', '=A1 A2']) {
+    for (const input of [`=${UNSUPPORTED}(A1:A9)`, '=SUM(', '=@#$%', '=A1 A2']) {
       const parsed = parseFormula(input)
       expect(parsed.degraded, input).toBe(true)
       expect(parsed.expr.k).toBe('raw')
@@ -116,7 +129,7 @@ describe('formula strings in a workbook', () => {
         {
           kind: 'sheet',
           name: 'S',
-          children: [Cell({ formula: '=XIRR(A1:A9,B1:B9)' })],
+          children: [Cell({ formula: `=${UNSUPPORTED}(B1:B9)` })],
         },
       ],
     })

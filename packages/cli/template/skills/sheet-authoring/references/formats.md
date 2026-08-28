@@ -109,3 +109,47 @@ half-written theme degrades to plain rather than to nothing.
 Keep `design` a plain object literal. The panel parses and rewrites it through an
 AST edit; a spread, a computed key, or a value imported from elsewhere makes the
 workbook untweakable.
+
+## Conditional formatting
+
+Four kinds, all **live** — the rule travels into the file, so it stays true when
+the numbers change. A rule evaluated at export time and written as a static fill
+is the same mistake as a chart pasted in as an image.
+
+```tsx
+col('margin',   { scale: ['#fee2e2', '#ffffff', '#dcfce7'] })
+col('trend',    { icons: 'arrows' })
+col('variance', { highlight: { above: 0, fill: '#dcfce7' } })
+col('amount',   { bar: true })
+```
+
+`highlight` takes one rule or an array applied in order, so a later rule wins
+where two overlap. The test is one of:
+
+| | |
+| --- | --- |
+| `above` · `below` · `atLeast` · `atMost` | numeric comparison |
+| `between: [a, b]` | inclusive |
+| `equals` | number, string or boolean |
+| `contains` | case-insensitive substring |
+| `duplicates: true` | appears more than once in the column |
+| `top: n` · `bottom: n` | rank within the column |
+
+and the look is any of `fill`, `color`, `bold`.
+
+`scale` takes two or three stops, lowest value to highest. `icons` is `'arrows'`
+or `'trafficLights'`, split into thirds of the column's range.
+
+**Both renderers draw the same thing**, and that is a constraint rather than a
+nicety — the viewer and Excel disagreeing about one cell is a bug that has
+happened here three times. Two consequences worth knowing:
+
+- The colour scale's midpoint is the **linear** midpoint of the range, not the
+  median. Excel's own default is the median, which the HTML export could not
+  reproduce without reimplementing Excel's percentile; the two would then drift
+  apart on any column that is not evenly distributed.
+- A column where every value is identical gets the **first** stop, not the
+  middle one, because that is what Excel paints.
+
+A bar and a highlight can share a column: one is a background image and the
+other a background colour, so neither is lost.

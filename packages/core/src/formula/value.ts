@@ -23,6 +23,7 @@ export const VALUE: ExcelError = Object.freeze({ kind: 'error', code: '#VALUE!' 
 export const REF: ExcelError = Object.freeze({ kind: 'error', code: '#REF!' })
 export const NAME: ExcelError = Object.freeze({ kind: 'error', code: '#NAME?' })
 export const NUM: ExcelError = Object.freeze({ kind: 'error', code: '#NUM!' })
+export const NA: ExcelError = Object.freeze({ kind: 'error', code: '#N/A' })
 
 export function isNotEvaluated(value: unknown): value is NotEvaluated {
   return (

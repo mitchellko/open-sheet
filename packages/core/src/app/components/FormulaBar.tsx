@@ -4,6 +4,7 @@ import type { ValueMap } from '../../formula/evaluate.js'
 import { toFormula } from '../../formula/serialize.js'
 import { display, isNotEvaluated } from '../../formula/value.js'
 import { toA1 } from '../../model/a1.js'
+import { readsFromValues } from '../../model/cell.js'
 import type { Selection } from './Grid.js'
 
 interface Props {
@@ -39,7 +40,9 @@ export function FormulaBar({ book, values, sheetIndex, selection }: Props) {
   }
 
   const computed =
-    sheet && cell?.expr ? values.get(`${sheet.name}!${selection.r},${selection.c}`) : undefined
+    sheet && readsFromValues(cell)
+      ? values.get(`${sheet.name}!${selection.r},${selection.c}`)
+      : undefined
 
   return (
     <div className="os-formula-bar">

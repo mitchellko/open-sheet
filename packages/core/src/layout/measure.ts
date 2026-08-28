@@ -18,6 +18,8 @@ export function measure(block: Block): Size {
       return { rows: 1, cols: block.cols }
     case 'spacer':
       return { rows: block.rows, cols: block.cols }
+    case 'spill':
+      return { rows: block.rows, cols: block.cols }
     case 'chart':
       return { rows: block.rows, cols: block.cols }
     case 'kpiBand':

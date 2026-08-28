@@ -1,5 +1,6 @@
 import type { CompiledWorkbook } from '../compile/emit.js'
 import { type HtmlOptions, toHtml } from './html.js'
+import { marginTemplate, unsupportedFields } from './margin.js'
 
 export interface PdfOptions extends HtmlOptions {
   format?: 'A4' | 'A3' | 'Letter' | 'Legal'
@@ -53,11 +54,40 @@ export async function toPdf(book: CompiledWorkbook, options: PdfOptions = {}): P
     const page = await browser.newPage()
     await page.setContent(html, { waitUntil: 'load' })
     await page.emulateMedia({ media: 'print' })
+    // Every sheet is on one page sequence, so the running header comes from the
+    // first sheet that declares one rather than changing partway down the file.
+    const print = book.sheets.find((sheet) => sheet.print?.header || sheet.print?.footer)?.print
+    for (const [margin, where] of [
+      [print?.header, 'header'],
+      [print?.footer, 'footer'],
+    ] as const) {
+      const lost = unsupportedFields(margin, 'pdf')
+      if (lost.length > 0) {
+        process.emitWarning?.(
+          `open-sheet: the PDF ${where} drops ${lost.join(', ')} — Chromium has no equivalent. ` +
+            'The xlsx export keeps them.',
+        )
+      }
+    }
+
+    const running = print?.header || print?.footer
     const pdf = await page.pdf({
       format: options.format ?? 'A4',
       landscape: (options.orientation ?? 'landscape') === 'landscape',
       printBackground: true,
-      margin: { top: '12mm', bottom: '12mm', left: '12mm', right: '12mm' },
+      margin: {
+        top: print?.header ? '20mm' : '12mm',
+        bottom: print?.footer ? '20mm' : '12mm',
+        left: '12mm',
+        right: '12mm',
+      },
+      ...(running
+        ? {
+            displayHeaderFooter: true,
+            headerTemplate: print?.header ? marginTemplate(print.header) : '<span></span>',
+            footerTemplate: print?.footer ? marginTemplate(print.footer) : '<span></span>',
+          }
+        : {}),
     })
     return Buffer.from(pdf)
   } finally {

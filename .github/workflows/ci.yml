@@ -56,3 +56,34 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm build
       - run: pnpm test:published
+
+  # Discord's /github endpoint renders issues, pull requests and pushes but
+  # ignores workflow_run entirely, so a red build would be the one thing the
+  # channel never heard about. This says it in the channel's own words.
+  notify:
+    needs: [check, recalc, published]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say which job broke
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "no DISCORD_WEBHOOK secret; nothing to notify"
+            exit 0
+          fi
+          jq -n \
+            --arg url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg branch "$GITHUB_REF_NAME" \
+            --arg sha "${GITHUB_SHA:0:7}" \
+            --arg who "$GITHUB_ACTOR" \
+            '{
+              embeds: [{
+                title: "CI failed on \($branch)",
+                url: $url,
+                description: "`\($sha)` pushed by \($who)",
+                color: 15548997
+              }]
+            }' > payload.json
+          curl -sS -f -X POST -H "Content-Type: application/json" -d @payload.json "$WEBHOOK"

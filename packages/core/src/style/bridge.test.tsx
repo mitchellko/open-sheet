@@ -163,3 +163,70 @@ describe('react needs its own shape of the same declarations', () => {
     expect(object.fontStyle).toBe(css['font-style'])
   })
 })
+
+describe('dates are serials with a format on top', () => {
+  const serial = (y: number, m: number, d: number) =>
+    (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86_400_000
+
+  it('renders a date code as a date, not as the number underneath', () => {
+    // A date cell holds 46258; only the format says it is 2026-08-24. Rendering
+    // the number would show the serial where Excel shows the date.
+    const d = serial(2026, 8, 24)
+    expect(formatValue(d, 'date')).toBe('2026-08-24')
+    expect(formatValue(d, 'dd/mm/yyyy')).toBe('24/08/2026')
+    expect(formatValue(d, 'd mmm yyyy')).toBe('24 Aug 2026')
+    expect(formatValue(d, 'mmmm yyyy')).toBe('August 2026')
+    expect(formatValue(d, 'dddd')).toBe('Monday')
+  })
+
+  it('does not mistake a number format for a date one', () => {
+    const d = serial(2026, 8, 24)
+    expect(formatValue(d, 'currency')).toBe('46,258')
+    expect(formatValue(d, 'number')).toBe('46,258')
+    expect(formatValue(0.5, 'percent')).toBe('50.0%')
+  })
+
+  it('tells minutes from months by what precedes them', () => {
+    const noon = serial(2026, 8, 24) + 0.5
+    expect(formatValue(noon, 'yyyy-mm-dd hh:mm')).toBe('2026-08-24 12:00')
+  })
+
+  it('reads a code with a word in it as a date, since the words are literals', () => {
+    // The earlier character whitelist rejected any code holding a letter that
+    // was not a date token, so `yyyy年m月` fell through to number formatting and
+    // showed the reader a bare serial. Excel treats unrecognised characters as
+    // literals; so do we.
+    const d = serial(2026, 8, 24)
+    expect(formatValue(d, 'yyyy年m月')).toBe('2026年8月')
+    expect(formatValue(d, 'yyyy年m月d日')).toBe('2026年8月24日')
+    // A token with literals on *both* sides, which the walk has to carry
+    // through rather than stopping at the first thing it does not recognise.
+    expect(formatValue(d, '民國yy年')).toBe('民國26年')
+  })
+
+  it('still refuses a code that is numeric, percent or text', () => {
+    const d = serial(2026, 8, 24)
+    expect(formatValue(d, '#,##0.00')).toBe('46,258.00')
+    expect(formatValue(0.6, '0.0%')).toBe('60.0%')
+    expect(formatValue(1234, '@')).toBe('1234')
+  })
+
+  it('names months and days in English, where Excel follows the reader', () => {
+    // A divergence we cannot close: `mmm` is "Aug" here and "8月" to a reader
+    // whose Excel runs in Chinese. Numeric codes agree everywhere, which is why
+    // the cross-engine harness asks only about those.
+    expect(formatValue(serial(2026, 8, 24), 'd mmm yyyy')).toBe('24 Aug 2026')
+  })
+
+  it('puts the hour on a 12-hour clock when the code asks for AM/PM', () => {
+    // `h:mm AM/PM` used to fail the date-code test on its letters, fall through
+    // to number formatting, and show the reader a bare serial.
+    const afternoon = serial(2026, 8, 24) + 13.5 / 24
+    const morning = serial(2026, 8, 24) + 9.25 / 24
+    expect(formatValue(afternoon, 'h:mm AM/PM')).toBe('1:30 PM')
+    expect(formatValue(morning, 'hh:mm AM/PM')).toBe('09:15 AM')
+    expect(formatValue(serial(2026, 8, 24), 'h:mm AM/PM')).toBe('12:00 AM')
+    // and without the marker the same hour stays on a 24-hour clock
+    expect(formatValue(afternoon, 'hh:mm')).toBe('13:30')
+  })
+})
