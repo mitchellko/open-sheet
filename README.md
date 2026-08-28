@@ -22,52 +22,7 @@ If [open-slide](https://github.com/1weiho/open-slide) is Google Slides for agent
 npx @open-sheet/cli init my-sheets
 ```
 
-## "Isn't that what Claude for Excel does?"
-
-Different tool, different job.
-
-> **Claude for Excel makes one person faster at making a spreadsheet.**
-> **open-sheet makes the spreadsheet not need making a second time.**
-
-| | Claude for Excel | open-sheet |
-| --- | --- | --- |
-| Input | a workbook that already exists | a `.tsx` source file |
-| Who is in the loop | a person, every time | a person **once**, at review |
-| Output | that file, changed | the same file, every rebuild |
-| Reviewing a change | a binary diff | a code review |
-| Doing it 500 times | 500 sessions | a loop |
-| Needs | Excel, an account, a paid plan | Node. MIT. |
-
-An assistant working *inside* a spreadsheet still writes `=SUM(B2:B13)` into a
-cell. That is a hand-authored address — authored by a model, but hand-authored.
-Insert a row and it is wrong, and nothing tells you. This is not a question of
-the model being clever enough: **A1 is the only language that medium has.**
-
-open-sheet writes `ref('pl').column('revenue')` and resolves it at compile time.
-Not "better at writing formulas" — it does not write addresses at all.
-
-And when it cannot compute a cell, it says so. `#NOT_EVALUATED`, never a
-plausible-looking number. Anything writing into a live cell produces something
-number-shaped whether or not it was sure — which is the failure mode that costs
-the most and shows the least.
-
-**Where Claude for Excel wins, and it is not close.** It writes live formulas
-too — the difference here is never "ours recalculate and theirs do not". A
-workbook you did not generate, we cannot read at all. It computes with Excel's
-own engine, so its numbers are Excel's numbers by construction, where we have to
-earn that with a cross-engine check on every build. Five hundred-odd functions to
-our hundred-odd. Pivot tables. "What is driving this variance?" — an analyst's
-question about a live model, not a compiler's.
-
-If you have a spreadsheet and want help with it, use that. This is for when the
-spreadsheet is the **output of a pipeline** rather than a document someone opens
-— a monthly board pack, five hundred invoices, a model regenerated whenever the
-data lands.
-
-The two compose, in that order: open-sheet emits live formulas precisely so the
-recipient can open the result and ask it questions.
-
-*Nobody argues LaTeX should not exist because Word has AI in it.*
+> Practice exercise note: this change is only for local Git workflow practice.
 
 ## Why
 
