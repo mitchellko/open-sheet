@@ -1,4 +1,5 @@
 import { createServer, type ViteDevServer } from 'vite'
+import { resolveConfig, viteConfigFor } from '../vite/index.js'
 import type { DesignSystem } from '../style/design.js'
 
 export interface WorkbookModule {
@@ -16,13 +17,14 @@ export async function createLoader(root: string): Promise<{
   load: (file: string) => Promise<WorkbookModule>
   close: () => Promise<void>
 }> {
+  const config = resolveConfig(root, {})
   const server: ViteDevServer = await createServer({
+    ...viteConfigFor(config),
     root,
     configFile: false,
     server: { middlewareMode: true },
     appType: 'custom',
     logLevel: 'warn',
-    esbuild: { jsx: 'automatic', jsxImportSource: '@open-sheet/core' },
   })
 
   return {

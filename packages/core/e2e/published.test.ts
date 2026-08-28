@@ -48,7 +48,13 @@ describe.skipIf(!BROWSER)('a published install renders', () => {
 
   it('scaffolds, installs from tarballs, and paints the grid', { timeout: 600_000 }, async () => {
     const run = (cmd: string, args: string[], cwd: string) =>
-      execFileSync(cmd, args, { cwd, stdio: 'pipe', timeout: 240_000, encoding: 'utf8' })
+      execFileSync(cmd, args, {
+        cwd,
+        stdio: 'pipe',
+        timeout: 240_000,
+        encoding: 'utf8',
+        shell: process.platform === 'win32',
+      })
 
     for (const pkg of ['core', 'cli']) {
       run('pnpm', ['pack', '--pack-destination', scratch], join(repo, 'packages', pkg))

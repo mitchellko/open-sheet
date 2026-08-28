@@ -14,13 +14,15 @@ function pack(name: string): { files: string[]; manifest: Record<string, any> } 
     cwd: join(packages, name),
     stdio: 'pipe',
     timeout: 120_000,
+    shell: process.platform === 'win32',
   })
   const tarball = join(out, readdirSync(out).find((file) => file.endsWith('.tgz')) as string)
 
   const files = execFileSync('tar', ['tzf', tarball], { encoding: 'utf8' })
+    .replace(/\r\n/g, '\n')
     .split('\n')
     .filter(Boolean)
-    .map((path) => path.replace(/^package\//, ''))
+    .map((path) => path.replace(/^package\//, '').replace(/\r$/, ''))
 
   const manifest = JSON.parse(
     execFileSync('tar', ['xzOf', tarball, 'package/package.json'], { encoding: 'utf8' }),

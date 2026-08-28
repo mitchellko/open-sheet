@@ -1,5 +1,6 @@
-import { realpathSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import type { InlineConfig, PluginOption } from 'vite'
 import { apiPlugin } from './api-plugin.js'
@@ -43,13 +44,26 @@ function reactAliases(): { find: RegExp; replacement: string }[] {
   return out
 }
 
+function esmEntry(specifier: string): string {
+  const pkgPath = require.resolve(`${specifier}/package.json`)
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+    exports?: { '.': { import?: { default?: string }; default?: string } }
+    module?: string
+    main?: string
+  }
+  const candidate =
+    pkg.exports?.['.']?.import?.default ?? pkg.exports?.['.']?.default ?? pkg.module ?? pkg.main
+  if (!candidate) return require.resolve(specifier)
+  return resolve(dirname(pkgPath), candidate)
+}
+
 function commonJsAliases(): { find: RegExp; replacement: string }[] {
   const out: { find: RegExp; replacement: string }[] = []
   for (const specifier of COMMONJS_SPECIFIERS) {
     try {
       out.push({
         find: new RegExp(`^${specifier.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}$`),
-        replacement: require.resolve(specifier),
+        replacement: esmEntry(specifier),
       })
     } catch {
       // leave it to the workspace; a clear resolve error beats a wrong alias

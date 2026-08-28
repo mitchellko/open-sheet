@@ -10,17 +10,22 @@ const PRAGMA = '/** @jsxImportSource @open-sheet/core */\n'
  * already moved once, from esbuild to oxc — this injects the standard pragma,
  * which every JSX transform honours.
  */
+function normalize(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
 export function jsxPlugin(config: ResolvedConfig): Plugin {
-  const sheets = join(config.root, config.sheetsDir)
-  const themes = join(config.root, config.themesDir)
+  const sheets = normalize(join(config.root, config.sheetsDir))
+  const themes = normalize(join(config.root, config.themesDir))
 
   return {
     name: 'open-sheet:jsx',
     enforce: 'pre',
     transform(code, id) {
       const [path] = id.split('?')
-      if (!path?.endsWith('.tsx') && !path?.endsWith('.jsx')) return undefined
-      if (!path.startsWith(sheets) && !path.startsWith(themes)) return undefined
+      const normalized = path ? normalize(path) : undefined
+      if (!normalized?.endsWith('.tsx') && !normalized?.endsWith('.jsx')) return undefined
+      if (!normalized.startsWith(sheets) && !normalized.startsWith(themes)) return undefined
       if (code.includes('@jsxImportSource')) return undefined
       return { code: PRAGMA + code, map: null }
     },

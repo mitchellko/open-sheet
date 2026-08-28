@@ -6,10 +6,10 @@ import { describe, expect, it } from 'vitest'
 const skills = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills')
 
 function frontmatter(markdown: string): Record<string, string> {
-  const match = /^---\n([\s\S]*?)\n---/.exec(markdown)
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(markdown)
   if (!match) return {}
   const out: Record<string, string> = {}
-  for (const line of (match[1] as string).split('\n')) {
+  for (const line of (match[1] as string).split(/\r?\n/)) {
     const at = line.indexOf(':')
     if (at > 0) out[line.slice(0, at).trim()] = line.slice(at + 1).trim()
   }
